@@ -7,6 +7,9 @@
         register_rest_field('post', 'author_data', array(
             'get_callback' => 'get_rest_post_author_data'
         ));
+        register_rest_field('post', 'view_count', array(
+            'get_callback' => 'get_rest_post_view_count'
+        ));
     });
 
     function get_rest_featured_media_url($post, $field_name, $request){
@@ -34,4 +37,21 @@
             'avatar'   => ''
         );
     }
+
+    function get_rest_post_view_count($post, $field_name, $request){
+        $post_id = $post['id'];
+
+        if(function_exists('pvc_get_post_views')){
+            $view_count = pvc_get_post_views($post_id);
+            return $view_count;
+        }
+
+        return 0;
+    }
+
+    add_filter('rest_endpoints', function($routes){
+        array_push($routes['/wp/v2/posts'][0]['args']['orderby']['enum'], 'post_views');
+
+        return $routes;
+    });
 ?>
