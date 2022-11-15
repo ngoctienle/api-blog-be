@@ -72,6 +72,15 @@ class Post_Views_Counter_Settings_API {
 	}
 
 	/**
+	 * Get pages.
+	 *
+	 * @return array
+	 */
+	public function get_pages() {
+		return $this->pages;
+	}
+
+	/**
 	 * Get settings.
 	 *
 	 * @return array
@@ -119,6 +128,8 @@ class Post_Views_Counter_Settings_API {
 
 	/**
 	 * Render settings.
+	 *
+	 * @global string $pagenow
 	 *
 	 * @return void
 	 */
@@ -188,18 +199,27 @@ class Post_Views_Counter_Settings_API {
 					<h3 class="hndle">' . $this->plugin . ' ' . $this->object->defaults['version'] . '</h3>
 					<div class="inside">
 						<h4 class="inner">' . __( 'Need support?', $this->domain ) . '</h4>
-						<p class="inner">' . sprintf( __( 'If you are having problems with this plugin, please browse it\'s <a href="%s" target="_blank">Documentation</a> or talk about them in the <a href="%s" target="_blank">Support forum</a>', $this->domain ), 'https://www.dfactory.eu/docs/' . $this->slug . '/?utm_source=' . $this->slug . '-settings&utm_medium=link&utm_campaign=docs', 'https://www.dfactory.eu/support/?utm_source=' . $this->slug . '-settings&utm_medium=link&utm_campaign=support' ) . '</p>
+						<p class="inner">' . sprintf( __( 'If you are having problems with this plugin, please browse it\'s <a href="%s" target="_blank">Documentation</a> or talk about them in the <a href="%s" target="_blank">Support forum</a>', $this->domain ), 'https://dfactory.co/docs/' . $this->slug . '/?utm_source=' . $this->slug . '-settings&utm_medium=link&utm_campaign=docs', 'https://dfactory.co/support/?utm_source=' . $this->slug . '-settings&utm_medium=link&utm_campaign=support' ) . '</p>
 						<hr />
 						<h4 class="inner">' . __( 'Do you like this plugin?', $this->domain ) . '</h4>
 						<p class="inner">' . sprintf( __( '<a href="%s" target="_blank">Rate it 5</a> on WordPress.org', $this->domain ), 'https://wordpress.org/support/plugin/' . $this->slug . '/reviews/?filter=5' ) . '<br />' .
-						sprintf( __( 'Blog about it & link to the <a href="%s" target="_blank">plugin page</a>.', $this->domain ), 'https://dfactory.eu/plugins/' . $this->slug . '/?utm_source=' . $this->slug . '-settings&utm_medium=link&utm_campaign=blog-about' ) . '<br />' .
-						sprintf( __( 'Check out our other <a href="%s" target="_blank">WordPress plugins</a>.', $this->domain ), 'https://dfactory.eu/plugins/?utm_source=' . $this->slug . '-settings&utm_medium=link&utm_campaign=other-plugins' ) . '
+						sprintf( __( 'Blog about it & link to the <a href="%s" target="_blank">plugin page</a>.', $this->domain ), 'https://dfactory.co/plugins/' . $this->slug . '/?utm_source=' . $this->slug . '-settings&utm_medium=link&utm_campaign=blog-about' ) . '<br />' .
+						sprintf( __( 'Check out our other <a href="%s" target="_blank">WordPress plugins</a>.', $this->domain ), 'https://dfactory.co/plugins/?utm_source=' . $this->slug . '-settings&utm_medium=link&utm_campaign=other-plugins' ) . '
 						</p>
 						<hr />
-						<p class="df-link inner"><a href="http://www.dfactory.eu/?utm_source=' . $this->slug . '-settings&utm_medium=link&utm_campaign=created-by" target="_blank" title="Digital Factory"><img src="//pvc-53eb.kxcdn.com/df-black-sm.png" alt="Digital Factory"></a></p>
+						<p class="df-link inner"><a href="http://dfactory.co/?utm_source=' . $this->slug . '-settings&utm_medium=link&utm_campaign=created-by" target="_blank" title="Digital Factory"><img src="//pvc-53eb.kxcdn.com/df-black-sm.png" alt="Digital Factory"></a></p>
 					</div>
-				</div>
-				<form action="options.php" method="post">';
+				</div>';
+
+		$display_form = true;
+
+		// check form attribute
+		if ( ! empty( $this->settings[$matches[1]]['form'] ) && ! empty( $tab_key ) && ! empty( $this->settings[$matches[1]]['form'][$tab_key] ) ) {
+			$form = $this->settings[$matches[1]]['form'][$tab_key];
+
+			if ( isset( $form['buttons'] ) && ! $form['buttons'] )
+				$display_form = false;
+		}
 
 		// any tabs?
 		if ( ! empty( $tab_key ) ) {
@@ -210,21 +230,30 @@ class Post_Views_Counter_Settings_API {
 		} else
 			$setting = $this->prefix . '_' . $matches[1] . '_settings';
 
+		if ( $display_form ) {
+			echo '
+				<form action="options.php" method="post">';
+		}
+
 		settings_fields( $setting );
 		do_settings_sections( $setting );
 
-		echo '
+		if ( $display_form ) {
+			echo '
 					<p class="submit">';
 
-		submit_button( '', 'primary', 'save_' . $setting, false );
+			submit_button( '', 'primary', 'save_' . $setting, false );
 
-		echo ' ';
+			echo ' ';
 
-		submit_button( __( 'Reset to defaults', $this->domain ), 'secondary reset_' . $setting . ' reset_' . $this->short . '_settings', 'reset_' . $setting, false );
+			submit_button( __( 'Reset to defaults', $this->domain ), 'secondary reset_' . $setting . ' reset_' . $this->short . '_settings', 'reset_' . $setting, false );
+
+			echo '
+					</p>
+				</form>';
+		}
 
 		echo '
-					</p>
-				</form>
 			</div>
 			<div class="clear"></div>
 		</div>';
@@ -250,6 +279,11 @@ class Post_Views_Counter_Settings_API {
 		}
 	}
 
+	/**
+	 * Register setting with sections and fields.
+	 *
+	 * @return void
+	 */
 	public function register_setting_fields( $setting_id, $setting, $option_name = '' ) {
 		if ( empty( $option_name ) )
 			$option_name = $setting['option_name'];
@@ -260,6 +294,10 @@ class Post_Views_Counter_Settings_API {
 		// register setting sections
 		if ( ! empty( $setting['sections'] ) ) {
 			foreach ( $setting['sections'] as $section_id => $section ) {
+				// skip unwanted sections
+				if ( ! empty( $section['tab'] ) && $section['tab'] !== $setting_id )
+					continue;
+
 				add_settings_section(
 					$section_id,
 					! empty( $section['title'] ) ? esc_html( $section['title'] ) : '',
@@ -272,6 +310,7 @@ class Post_Views_Counter_Settings_API {
 		// register setting fields
 		if ( ! empty( $setting['fields'] ) ) {
 			foreach ( $setting['fields'] as $field_key => $field ) {
+				// skip unwanted fields
 				if ( ! empty( $field['tab'] ) && $field['tab'] !== $setting_id )
 					continue;
 

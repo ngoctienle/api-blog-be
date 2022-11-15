@@ -10,6 +10,8 @@ if ( ! defined( 'ABSPATH' ) )
  */
 class Post_Views_Counter_Frontend {
 
+	private $script_args = [];
+
 	/**
 	 * Class constructor.
 	 *
@@ -39,25 +41,54 @@ class Post_Views_Counter_Frontend {
 	 */
 	public function post_views_shortcode( $args ) {
 		$defaults = [
-			'id' => get_the_ID()
+			'id'	=> get_the_ID(),
+			'type'	=> 'post'
 		];
 
+		// main item?
+		if ( ! in_the_loop() ) {
+			// get current object
+			$object = get_queried_object();
+
+			// post?
+			if ( is_a( $object, 'WP_Post' ) ) {
+				$defaults['id'] = $object->ID;
+				$defaults['type'] = 'post';
+			// term?
+			} elseif ( is_a( $object, 'WP_Term' ) ) {
+				$defaults['id'] = $object->term_id;
+				$defaults['type'] = 'term';
+			// user?
+			} elseif ( is_a( $object, 'WP_User' ) ) {
+				$defaults['id'] = $object->ID;
+				$defaults['type'] = 'user';
+			}
+		}
+
+		// combine attributes
 		$args = shortcode_atts( $defaults, $args );
 
-		return pvc_post_views( $args['id'], false );
+		// default type?
+		if ( $args['type'] === 'post' )
+			$views = pvc_post_views( $args['id'], false );
+		else
+			$views = apply_filters( 'pvc_post_views_shortcode', '', $args );
+
+		return $views;
 	}
 
 	/**
-	 * Set up plugin hooks.
+	 * Display number of post views.
 	 *
 	 * @return void
 	 */
 	public function run() {
-		if ( is_admin() && ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) )
+		if ( is_admin() && ! wp_doing_ajax() )
 			return;
 
 		$filter = apply_filters( 'pvc_shortcode_filter_hook', Post_Views_Counter()->options['display']['position'] );
 
+		// valid filter?
 		if ( ! empty( $filter ) && in_array( $filter, [ 'before', 'after' ] ) ) {
 			// post content
 			add_filter( 'the_content', [ $this, 'add_post_views_count' ] );
@@ -65,11 +96,9 @@ class Post_Views_Counter_Frontend {
 			// bbpress support
 			add_action( 'bbp_template_' . $filter . '_single_topic', [ $this, 'display_bbpress_post_views' ] );
 			add_action( 'bbp_template_' . $filter . '_single_forum', [ $this, 'display_bbpress_post_views' ] );
-		} else {
-			// custom
-			if ( $filter !== 'manual' && is_string( $filter ) )
-				add_filter( $filter, [ $this, 'add_post_views_count' ] );
-		}
+		// custom
+		} elseif ( $filter !== 'manual' && is_string( $filter ) )
+			add_filter( $filter, [ $this, 'add_post_views_count' ] );
 	}
 
 	/**
@@ -96,6 +125,11 @@ class Post_Views_Counter_Frontend {
 		$pvc = Post_Views_Counter();
 
 		$display = false;
+
+		// post type check
+		if ( ! empty( $pvc->options['display']['post_types_display'] ) ) {
+			$display = is_singular( $pvc->options['display']['post_types_display'] );
+		}
 
 		// page visibility check
 		if ( ! empty( $pvc->options['display']['page_types_display'] ) ) {
@@ -165,6 +199,15 @@ class Post_Views_Counter_Frontend {
 	}
 
 	/**
+	 * Get frontend script arguments.
+	 *
+	 * @return array
+	 */
+	public function get_frontend_script_args() {
+		return $this->script_args;
+	}
+
+	/**
 	 * Enqueue frontend scripts and styles.
 	 *
 	 * @return void
@@ -179,7 +222,7 @@ class Post_Views_Counter_Frontend {
 			wp_enqueue_style( 'dashicons' );
 
 			// load style
-			wp_enqueue_style( 'post-views-counter-frontend', POST_VIEWS_COUNTER_URL . '/css/frontend.css', [], $pvc->defaults['version'] );
+			wp_enqueue_style( 'post-views-counter-frontend', POST_VIEWS_COUNTER_URL . '/css/frontend' . ( ! ( defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ) ? '.min' : '' ) . '.css', [], $pvc->defaults['version'] );
 		}
 
 		// get countable post types
@@ -194,29 +237,38 @@ class Post_Views_Counter_Frontend {
 
 		// specific counter mode?
 		if ( in_array( $mode, [ 'js', 'rest_api' ], true ) ) {
-			wp_enqueue_script( 'post-views-counter-frontend', POST_VIEWS_COUNTER_URL . '/js/frontend.js', [ 'jquery' ], $pvc->defaults['version'], true );
+			wp_enqueue_script( 'post-views-counter-frontend', POST_VIEWS_COUNTER_URL . '/js/frontend' . ( ! ( defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ) ? '.min' : '' ) . '.js', [], $pvc->defaults['version'], true );
 
+			// prepare args
 			$args = [
-				'mode'		=> $mode,
-				'postID'	=> get_the_ID(),
-				'nonce'		=> ( $mode === 'rest_api' ? wp_create_nonce( 'wp_rest' ) : wp_create_nonce( 'pvc-check-post' ) )
+				'mode'			=> $mode,
+				'postID'		=> get_the_ID(),
+				'requestURL'	=> '',
+				'nonce'			=> ''
 			];
 
 			switch ( $mode ) {
+				// rest api 
 				case 'rest_api':
-					$args['requestURL'] = rest_url( 'post-views-counter/view-post/' );
+					$args['requestURL'] = rest_url( 'post-views-counter/view-post/' . $args['postID'] );
+					$args['nonce'] = wp_create_nonce( 'wp_rest' );
 					break;
 
+				// javascript
 				case 'js':
 				default:
 					$args['requestURL'] = admin_url( 'admin-ajax.php' );
+					$args['nonce'] = wp_create_nonce( 'pvc-check-post' );
 					break;
 			}
 
 			// make it safe
 			$args['requestURL'] = esc_url_raw( $args['requestURL'] );
 
-			wp_localize_script( 'post-views-counter-frontend', 'pvcArgsFrontend', apply_filters( 'pvc_frontend_script_args', $args ) );
+			// set script args
+			$this->script_args = apply_filters( 'pvc_frontend_script_args', $args, 'standard' );
+
+			wp_localize_script( 'post-views-counter-frontend', 'pvcArgsFrontend', $this->script_args );
 		}
 	}
 }

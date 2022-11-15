@@ -144,6 +144,12 @@
 									position: 'bottom',
 									align: 'center',
 									fullSize: true,
+									onHover: function( e ) {
+										e.native.target.style.cursor = 'pointer';
+									},
+									onLeave: function( e ) {
+										e.native.target.style.cursor = 'default';
+									},
 									onClick: function( e, element, legend ) {
 										var index = element.datasetIndex;
 										var ci = legend.chart;
@@ -165,9 +171,13 @@
 										} );
 									},
 									labels: {
-										boxWidth: 0,
-										boxHeight: 0,
-										fontSize: 12,
+										boxWidth: 8,
+										boxHeight: 8,
+										font: {
+											size: 13,
+											weight: 'normal',
+											family: "'-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Oxygen-Sans', 'Ubuntu', 'Cantarell', 'Helvetica Neue', 'sans-serif'"
+										},
 										padding: 10,
 										usePointStyle: false,
 										textAlign: 'center'
@@ -282,7 +292,7 @@
 	 */
 	function loadPostMostViewedData( e ) {
 		e.preventDefault();
-		
+
 		var container = $( '#pvc-post-most-viewed' ).find( '.pvc-dashboard-container' );
 
 		getPostMostViewedData( false, e.target.dataset.date, container );

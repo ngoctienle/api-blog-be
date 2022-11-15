@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) )
 
 /**
  * Post_Views_Counter_Settings class.
- * 
+ *
  * @class Post_Views_Counter_Settings
  */
 class Post_Views_Counter_Settings {
@@ -35,7 +35,7 @@ class Post_Views_Counter_Settings {
 
 		// Fast AJAX as active but not available counter mode?
 		if ( $pvc->options['general']['counter_mode'] === 'ajax' && ! array_key_exists( 'ajax', $this->get_counter_modes() ) ) {
-			// set standard JavaScript AJAX calls
+			// set standard javascript ajax calls
 			$pvc->options['general']['counter_mode'] = 'js';
 
 			// update database options
@@ -105,8 +105,12 @@ class Post_Views_Counter_Settings {
 			],
 			'validate' => [ $this, 'validate_settings' ],
 			'sections' => [
-				'post_views_counter_general_settings' => [],
-				'post_views_counter_display_settings' => []
+				'post_views_counter_general_settings' => [
+					'tab'	=> 'general'
+				],
+				'post_views_counter_display_settings' => [
+					'tab'	=> 'display'
+				]
 			],
 			'fields' => [
 				'post_types_count' => [
@@ -222,7 +226,7 @@ class Post_Views_Counter_Settings {
 					'title'			=> __( 'Deactivation', 'post-views-counter' ),
 					'section'		=> 'post_views_counter_general_settings',
 					'type'			=> 'boolean',
-					'description'	=> '',
+					'description'	=> __( 'It will delete all data related to the plugin from the database including post views.', 'post-views-counter' ),
 					'label'			=> __( 'Enable to delete all plugin data on deactivation.', 'post-views-counter' )
 				],
 				'label' => [
@@ -353,6 +357,8 @@ class Post_Views_Counter_Settings {
 	/**
 	 * Validate options.
 	 *
+	 * @global object $wpdb
+	 *
 	 * @param array $input Settings data
 	 * @return array
 	 */
@@ -360,6 +366,8 @@ class Post_Views_Counter_Settings {
 		// check capability
 		if ( ! current_user_can( 'manage_options' ) )
 			return $input;
+
+		global $wpdb;
 
 		// get main instance
 		$pvc = Post_Views_Counter();
@@ -371,8 +379,6 @@ class Post_Views_Counter_Settings {
 		if ( isset( $_POST['post_views_counter_import_wp_postviews'] ) ) {
 			// make sure we do not change anything in the settings
 			$input = $pvc->options['general'];
-
-			global $wpdb;
 
 			// get views key
 			$meta_key = esc_attr( apply_filters( 'pvc_import_meta_key', 'views' ) );
@@ -397,8 +403,6 @@ class Post_Views_Counter_Settings {
 		} elseif ( isset( $_POST['post_views_counter_reset_views'] ) ) {
 			// make sure we do not change anything in the settings
 			$input = $pvc->options['general'];
-
-			global $wpdb;
 
 			if ( $wpdb->query( 'TRUNCATE TABLE ' . $wpdb->prefix . 'post_views' ) )
 				add_settings_error( 'reset_post_views', 'reset_post_views', __( 'All existing data deleted succesfully.', 'post-views-counter' ), 'updated' );

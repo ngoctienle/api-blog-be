@@ -388,11 +388,18 @@ if ( ! function_exists( 'pvc_get_views' ) ) {
  */
 if ( ! function_exists( 'pvc_post_views' ) ) {
 
-	function pvc_post_views( $post_id = 0, $echo = true ) {
+	function pvc_post_views( $post_id = 0, $display = true ) {
 		// get all data
 		$post_id = (int) ( empty( $post_id ) ? get_the_ID() : $post_id );
+
+		// get display options
 		$options = Post_Views_Counter()->options['display'];
+
+		// get term views
 		$views = pvc_get_post_views( $post_id );
+
+		// container class
+		$class = apply_filters( 'pvc_post_views_class', 'post-views content-post post-' . $post_id . ' entry-meta', $post_id );
 
 		// prepare display
 		$label = apply_filters( 'pvc_post_views_label', ( function_exists( 'icl_t' ) ? icl_t( 'Post Views Counter', 'Post Views Label', $options['label'] ) : $options['label'] ), $post_id );
@@ -404,14 +411,14 @@ if ( ! function_exists( 'pvc_post_views' ) ) {
 		$icon_class = strpos( $icon_class, 'dashicons ' ) === 0 ? $icon_class : 'dashicons ' . $icon_class;
 
 		// prepare icon output
-		$icon = apply_filters( 'pvc_post_views_icon', '<span class="post-views-icon ' . $icon_class . '"></span>', $post_id );
+		$icon = apply_filters( 'pvc_post_views_icon', '<span class="post-views-icon ' . $icon_class . '"></span> ', $post_id );
 
 		$html = apply_filters(
 			'pvc_post_views_html',
-			'<div class="post-views post-' . $post_id . ' entry-meta">
-				' . ( $options['display_style']['icon'] && $icon_class !== '' ? $icon : '' ) . '
-				' . ( $options['display_style']['text'] && $label !== '' ? '<span class="post-views-label">' . esc_html( $label ) . '</span>' : '' ) . '
-				<span class="post-views-count">' . number_format_i18n( $views ) . '</span>
+			'<div class="' . esc_attr( $class ) . '">
+				' . ( $options['display_style']['icon'] && $icon_class !== '' ? $icon : '' )
+				. ( $options['display_style']['text'] && $label !== '' ? '<span class="post-views-label">' . esc_html( $label ) . '</span> ' : '' )
+				. '<span class="post-views-count">' . number_format_i18n( $views ) . '</span>
 			</div>',
 			$post_id,
 			$views,
@@ -419,7 +426,7 @@ if ( ! function_exists( 'pvc_post_views' ) ) {
 			$icon
 		);
 
-		if ( $echo )
+		if ( $display )
 			echo $html;
 		else
 			return $html;
@@ -566,7 +573,7 @@ if ( ! function_exists( 'pvc_most_viewed_posts' ) ) {
  *
  * @param int $post_id Post ID
  * @param int $post_views Number of post views
- * @return true|int
+ * @return bool|int
  */
 function pvc_update_post_views( $post_id = 0, $post_views = 0 ) {
 	// cast post ID
@@ -589,16 +596,7 @@ function pvc_update_post_views( $post_id = 0, $post_views = 0 ) {
 	$post_views = apply_filters( 'pvc_update_post_views_count', $post_views, $post_id );
 
 	// insert or update database post views count
-	$wpdb->query(
-		$wpdb->prepare(
-			"INSERT INTO " . $wpdb->prefix . "post_views (id, type, period, count) VALUES (%d, %d, %s, %d) ON DUPLICATE KEY UPDATE count = %d",
-			$post_id,
-			4,
-			'total',
-			$post_views,
-			$post_views
-		)
-	);
+	$wpdb->query( $wpdb->prepare( "INSERT INTO " . $wpdb->prefix . "post_views (id, type, period, count) VALUES (%d, %d, %s, %d) ON DUPLICATE KEY UPDATE count = %d", $post_id, 4, 'total', $post_views, $post_views ) );
 
 	// query fails only if it returns false
 	return apply_filters( 'pvc_update_post_views', $post_id );
@@ -607,17 +605,47 @@ function pvc_update_post_views( $post_id = 0, $post_views = 0 ) {
 /**
  * View post manually function.
  *
+ * By default this function has limitations. It works properly only between
+ * wp_loaded (minimum priority 10) and wp_head (maximum priority 6) actions and
+ * it can handle only one function execution per site request.
+ *
+ * To bypass these limitations there is a $bypass_content argument. It requires
+ * JavaScript or REST API as counter mode but it extends the ability to use
+ * pvc_view_post up to wp_print_footer_scripts (maximum priority 10) action. It
+ * also bypass one function execution limitation to allow multiple function
+ * calls during one site request. This also includes the correct saving of
+ * cookies.
+ *
  * @since 1.2.0
+ *
  * @param int $post_id
+ * @param bool $bypass_content
  * @return bool
  */
-function pvc_view_post( $post_id = 0 ) {
-	$post_id = (int) ( empty( $post_id ) ? get_the_ID() : $post_id );
+function pvc_view_post( $post_id = 0, $bypass_content = false ) {
+	// no post id?
+	if ( empty( $post_id ) ) {
+		// get current id
+		$post_id = get_the_ID();
+	} else {
+		// cast post id
+		$post_id = (int) $post_id;
+	}
 
-	if ( ! $post_id )
+	// get post
+	$post = get_post( $post_id );
+
+	// invalid post?
+	if ( ! is_a( $post, 'WP_Post' ) )
 		return false;
 
-	Post_Views_Counter()->counter->check_post( $post_id );
+	// get main instance
+	$pvc = Post_Views_Counter();
+
+	if ( $bypass_content )
+		$pvc->counter->add_to_queue( $post_id );
+	else
+		$pvc->counter->check_post( $post_id );
 
 	return true;
 }

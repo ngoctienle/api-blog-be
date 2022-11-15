@@ -71,11 +71,10 @@ class Post_Views_Counter_Dashboard {
 		$pvc = Post_Views_Counter();
 
 		// styles
-		wp_enqueue_style( 'pvc-admin-dashboard', POST_VIEWS_COUNTER_URL . '/css/admin-dashboard.css', [], $pvc->defaults['version'] );
+		wp_enqueue_style( 'pvc-admin-dashboard', POST_VIEWS_COUNTER_URL . '/css/admin-dashboard.min.css', [], $pvc->defaults['version'] );
 		wp_enqueue_style( 'pvc-microtip', POST_VIEWS_COUNTER_URL . '/assets/microtip/microtip.min.css', [], '1.0.0' );
 
 		// scripts
-		wp_register_script( 'pvc-chartjs', POST_VIEWS_COUNTER_URL . '/assets/chartjs/chart.min.js', [ 'jquery' ], '3.7.0', true );
 		wp_enqueue_script( 'pvc-admin-dashboard', POST_VIEWS_COUNTER_URL . '/js/admin-dashboard.js', [ 'jquery', 'pvc-chartjs' ], $pvc->defaults['version'], true );
 
 		wp_localize_script(
@@ -190,13 +189,13 @@ class Post_Views_Counter_Dashboard {
 	 * @return string
 	 */
 	public function generate_dashboard_widget_item( $item, $menu_items, $esc_months_html ) {
-		// allows a list of HTML Entities such as  
+		// get allowed html tags
 		$allowed_html = wp_kses_allowed_html( 'post' );
 		$allowed_html['canvas'] = [
 			'id' => [],
 			'height' => []
 		];
-		
+
 		return '
 		<div id="pvc-' . esc_attr( $item['id'] ) . '" class="pvc-accordion-item' . ( in_array( $item['id'], $menu_items, true ) ? ' pvc-collapsed' : '' ) . '">
 			<div class="pvc-accordion-header">
@@ -222,8 +221,6 @@ class Post_Views_Counter_Dashboard {
 	/**
 	 * Render dashboard widget with post views.
 	 *
-	 * @global array $_wp_admin_css_colors
-	 *
 	 * @return void
 	 */
 	public function dashboard_post_views_chart() {
@@ -245,26 +242,8 @@ class Post_Views_Counter_Dashboard {
 		// get current date
 		$now = getdate( current_time( 'timestamp', get_option( 'gmt_offset' ) ) );
 
-		// get color schemes
-		global $_wp_admin_css_colors;
-
-		// set default color;
-		$color = [
-			'r'	=> 105,
-			'g'	=> 168,
-			'b'	=> 187
-		];
-
-		if ( ! empty( $_wp_admin_css_colors ) ) {
-			// get current admin color scheme name
-			$current_color_scheme = get_user_option( 'admin_color' );
-
-			if ( empty( $current_color_scheme ) )
-				$current_color_scheme = 'fresh';
-
-			if ( isset( $_wp_admin_css_colors[$current_color_scheme] ) )
-				$color = $this->hex2rgb( $_wp_admin_css_colors[$current_color_scheme]->colors[2] );
-		}
+		// get colors
+		$color = $this->get_colors();
 
 		// set chart labels
 		switch ( $period ) {
@@ -504,8 +483,11 @@ class Post_Views_Counter_Dashboard {
 		if ( ! check_ajax_referer( 'pvc-dashboard-widget', 'nonce' ) )
 			wp_die( __( 'You do not have permission to access this page.', 'post-views-counter' ) );
 
+		// get main instance
+		$pvc = Post_Views_Counter();
+
 		// get post types
-		$post_types = Post_Views_Counter()->options['general']['post_types_count'];
+		$post_types = $pvc->options['general']['post_types_count'];
 
 		// get period
 		$period = isset( $_POST['period'] ) ? sanitize_text_field( $_POST['period'] ) : 'this_month';
@@ -559,17 +541,20 @@ class Post_Views_Counter_Dashboard {
 				<tr>
 					<th scope="col">' . ( $index + 1 ) . '</th>';
 
+				// check post type existence
 				if ( array_key_exists( $post->post_type, $active_post_types ) )
 					$post_type_exists = $active_post_types[$post->post_type];
 				else
 					$post_type_exists = $active_post_types[$post->post_type] = post_type_exists( $post->post_type );
 
-				if ( $post_type_exists && current_user_can( 'edit_post', $post->ID ) )
+				// edit post link
+				if ( $post_type_exists && current_user_can( 'edit_post', $post->ID ) ) {
 					$html .= '
 					<td><a href="' . esc_url( get_edit_post_link( $post->ID ) ) . '">' . esc_html( get_the_title( $post ) ) . '</a></td>';
-				else
+				} else {
 					$html .= '
 					<td>' . esc_html( get_the_title( $post ) ). '</td>';
+				}
 
 				$html .= '
 					<td>' . number_format_i18n( $post->post_views ) . '</td>
@@ -736,6 +721,38 @@ class Post_Views_Counter_Dashboard {
 		}
 
 		return $timestamp;
+	}
+
+	/**
+	 * Get default color for charts.
+	 *
+	 * @global array $_wp_admin_css_colors
+	 *
+	 * @return array
+	 */
+	public function get_colors() {
+		// get global color scheme
+		global $_wp_admin_css_colors;
+
+		// set default colors
+		$colors = [
+			'r'	=> 105,
+			'g'	=> 168,
+			'b'	=> 187
+		];
+
+		if ( ! empty( $_wp_admin_css_colors ) ) {
+			// get current admin color scheme name
+			$current_color_scheme = get_user_option( 'admin_color' );
+
+			if ( empty( $current_color_scheme ) )
+				$current_color_scheme = 'fresh';
+
+			if ( isset( $_wp_admin_css_colors[$current_color_scheme] ) )
+				$colors = $this->hex2rgb( $_wp_admin_css_colors[$current_color_scheme]->colors[2] );
+		}
+
+		return $colors;
 	}
 
 	/**

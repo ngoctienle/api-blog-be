@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) )
 
 /**
  * Post_Views_Counter_Admin class.
- * 
+ *
  * @class Post_Views_Counter_Admin
  */
 class Post_Views_Counter_Admin {
@@ -18,6 +18,16 @@ class Post_Views_Counter_Admin {
 	public function __construct() {
 		// actions
 		add_action( 'plugins_loaded', [ $this, 'init_block_editor' ] );
+		add_action( 'admin_enqueue_scripts', [ $this, 'register_chartjs' ], 9 );
+	}
+
+	/**
+	 * Register Chart.js.
+	 *
+	 * @return void
+	 */
+	public function register_chartjs() {
+		wp_register_script( 'pvc-chartjs', POST_VIEWS_COUNTER_URL . '/assets/chartjs/chart.min.js', [ 'jquery' ], '3.7.1', true );
 	}
 
 	/**
@@ -112,6 +122,9 @@ class Post_Views_Counter_Admin {
 
 	/**
 	 * Enqueue frontend and editor JavaScript and CSS.
+	 *
+	 * @global string $pagenow
+	 * @global string $wp_version
 	 *
 	 * @return void
 	 */

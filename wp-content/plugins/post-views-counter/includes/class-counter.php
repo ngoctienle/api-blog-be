@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) )
 
 /**
  * Post_Views_Counter_Counter class.
- * 
+ *
  * @class Post_Views_Counter_Counter
  */
 class Post_Views_Counter_Counter {
@@ -15,6 +15,8 @@ class Post_Views_Counter_Counter {
 	const CACHE_KEY_SEPARATOR = '.';
 	const MAX_INSERT_STRING_LENGTH = 25000;
 
+	private $queue = [];
+	private $queue_mode = false;
 	private $db_insert_values = '';
 	private $cookie = [
 		'exists'		 => false,
@@ -35,26 +37,128 @@ class Post_Views_Counter_Counter {
 	}
 
 	/**
+	 * Add Post ID to queue.
+	 *
+	 * @param int $post_id
+	 * @return void
+	 */
+	public function add_to_queue( $post_id ) {
+		$this->queue[] = (int) $post_id;
+	}
+
+	/**
+	 * Run manual pvc_view_post queue.
+	 *
+	 * @return void
+	 */
+	public function queue_count() {
+		if ( isset( $_POST['action'], $_POST['ids'], $_POST['pvc_nonce'] ) && $_POST['action'] === 'pvc-view-posts' && wp_verify_nonce( $_POST['pvc_nonce'], 'pvc-view-posts' ) !== false && $_POST['ids'] !== '' && is_string( $_POST['ids'] ) ) {
+			// get post ids
+			$ids = explode( ',', $_POST['ids'] );
+
+			$counted = [];
+
+			if ( ! empty( $ids ) ) {
+				$ids = array_filter( array_map( 'intval', $ids ) );
+
+				if ( ! empty( $ids ) ) {
+					// turn on queue mode
+					$this->queue_mode = true;
+
+					foreach ( $ids as $id ) {
+						$counted[$id] = ! ( $this->check_post( $id ) === null );
+					}
+
+					// turn off queue mode
+					$this->queue_mode = false;
+				}
+			}
+
+			echo json_encode(
+				[
+					'post_ids'	=> $ids,
+					'counted'	=> $counted
+				]
+			);
+		}
+
+		exit;
+	}
+
+	/**
+	 * Print JavaScript with queue in the footer.
+	 *
+	 * @return void
+	 */
+	public function print_queue_count() {
+		// any ids to "view"?
+		if ( ! empty( $this->queue ) ) {
+			echo "
+			<script>
+				( function( window, document, undefined ) {
+					document.addEventListener( 'DOMContentLoaded', function() {
+						let pvcLoadManualCounter = function( url, counter ) {
+							let pvcScriptTag = document.createElement( 'script' );
+
+							// append script
+							document.body.appendChild( pvcScriptTag );
+
+							// set attributes
+							pvcScriptTag.onload = counter;
+							pvcScriptTag.onreadystatechange = counter;
+							pvcScriptTag.src = url;
+						};
+
+						let pvcExecuteManualCounter = function() {
+							let pvcManualCounterArgs = {
+								url: '" . esc_url( admin_url( 'admin-ajax.php' ) ) . "',
+								nonce: '" . wp_create_nonce( 'pvc-view-posts' ) . "',
+								ids: '" . implode( ',', $this->queue ) . "'
+							};
+
+							// main javascript file was loaded?
+							if ( typeof PostViewsCounter !== 'undefined' && PostViewsCounter.promise !== null ) {
+								PostViewsCounter.promise.then( function() {
+									PostViewsCounterManual.init( pvcManualCounterArgs );
+								} );
+							// PostViewsCounter is undefined or promise is null
+							} else {
+								PostViewsCounterManual.init( pvcManualCounterArgs );
+							}
+						}
+
+						pvcLoadManualCounter( '" . POST_VIEWS_COUNTER_URL . "/js/counter" . ( ! ( defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ) ? '.min' : '' ) . ".js', pvcExecuteManualCounter );
+					}, false );
+				} )( window, document );
+			</script>";
+		}
+	}
+
+	/**
 	 * Initialize counter.
 	 *
 	 * @return void
 	 */
 	public function init_counter() {
 		// admin?
-		if ( is_admin() && ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) )
+		if ( is_admin() && ! wp_doing_ajax() )
 			return;
 
 		// get main instance
 		$pvc = Post_Views_Counter();
 
-		// PHP counter
+		add_action( 'wp_ajax_pvc-view-posts', [ $this, 'queue_count' ] );
+		add_action( 'wp_ajax_nopriv_pvc-view-posts', [ $this, 'queue_count' ] );
+		add_action( 'wp_print_footer_scripts', [ $this, 'print_queue_count' ], 11 );
+
+		// php counter
 		if ( $pvc->options['general']['counter_mode'] === 'php' )
 			add_action( 'wp', [ $this, 'check_post_php' ] );
-		// JavaScript (AJAX) counter
+		// javascript (ajax) counter
 		elseif ( $pvc->options['general']['counter_mode'] === 'js' ) {
 			add_action( 'wp_ajax_pvc-check-post', [ $this, 'check_post_js' ] );
 			add_action( 'wp_ajax_nopriv_pvc-check-post', [ $this, 'check_post_js' ] );
-			// REST API?
+		// rest api counter
 		} elseif ( $pvc->options['general']['counter_mode'] === 'rest_api' )
 			add_action( 'rest_api_init', [ $this, 'rest_api_init' ] );
 	}
@@ -63,7 +167,7 @@ class Post_Views_Counter_Counter {
 	 * Check whether to count visit.
 	 *
 	 * @param int $id
-	 * @return void
+	 * @return void|int
 	 */
 	public function check_post( $id = 0 ) {
 		// short init?
@@ -137,7 +241,7 @@ class Post_Views_Counter_Counter {
 			// exclude specific roles?
 			elseif ( in_array( 'roles', $groups, true ) && $this->is_user_role_excluded( $user_id, $pvc->options['general']['exclude']['roles'] ) )
 				return;
-			// exclude guests?
+		// exclude guests?
 		} elseif ( in_array( 'guests', $groups, true ) )
 			return;
 
@@ -157,7 +261,7 @@ class Post_Views_Counter_Counter {
 				$this->save_cookie( $id, $this->cookie, false );
 
 				return;
-				// update cookie
+			// update cookie
 			} else
 				$this->save_cookie( $id, $this->cookie );
 		} else {
@@ -184,15 +288,18 @@ class Post_Views_Counter_Counter {
 	 */
 	public function check_post_php() {
 		// do not count admin entries
-		if ( is_admin() && ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) )
+		if ( is_admin() && ! wp_doing_ajax() )
 			return;
 
-		// do we use PHP as counter?
-		if ( Post_Views_Counter()->options['general']['counter_mode'] !== 'php' )
+		// get main instance
+		$pvc = Post_Views_Counter();
+
+		// do we use php as counter?
+		if ( $pvc->options['general']['counter_mode'] !== 'php' )
 			return;
 
 		// get countable post types
-		$post_types = Post_Views_Counter()->options['general']['post_types_count'];
+		$post_types = $pvc->options['general']['post_types_count'];
 
 		// whether to count this post type
 		if ( empty( $post_types ) || ! is_singular( $post_types ) )
@@ -208,12 +315,15 @@ class Post_Views_Counter_Counter {
 	 */
 	public function check_post_js() {
 		if ( isset( $_POST['action'], $_POST['id'], $_POST['pvc_nonce'] ) && $_POST['action'] === 'pvc-check-post' && ( $post_id = (int) $_POST['id'] ) > 0 && wp_verify_nonce( $_POST['pvc_nonce'], 'pvc-check-post' ) !== false ) {
-			// do we use JavaScript as counter?
-			if ( Post_Views_Counter()->options['general']['counter_mode'] !== 'js' )
+			// get main instance
+			$pvc = Post_Views_Counter();
+
+			// do we use javascript as counter?
+			if ( $pvc->options['general']['counter_mode'] !== 'js' )
 				exit;
 
 			// get countable post types
-			$post_types = Post_Views_Counter()->options['general']['post_types_count'];
+			$post_types = $pvc->options['general']['post_types_count'];
 
 			// check if post exists
 			$post = get_post( $post_id );
@@ -222,7 +332,12 @@ class Post_Views_Counter_Counter {
 			if ( empty( $post_types ) || empty( $post ) || ! in_array( $post->post_type, $post_types, true ) )
 				exit;
 
-			$this->check_post( $post_id );
+			echo json_encode(
+				[
+					'post_id'	=> $post_id,
+					'counted'	=> ! ( $this->check_post( $post_id ) === null )
+				]
+			);
 		}
 
 		exit;
@@ -231,14 +346,18 @@ class Post_Views_Counter_Counter {
 	/**
 	 * Check whether to count visit via REST API request.
 	 *
-	 * @param array $request
-	 * @return array|int
+	 * @param object $request
+	 * @return int|WP_Error
 	 */
 	public function check_post_rest_api( $request ) {
-		$post_id = absint( $request['id'] );
+		// get main instance
+		$pvc = Post_Views_Counter();
+
+		// get post id (already sanitized)
+		$post_id = $request->get_param( 'id' );
 
 		// do we use REST API as counter?
-		if ( Post_Views_Counter()->options['general']['counter_mode'] !== 'rest_api' )
+		if ( $pvc->options['general']['counter_mode'] !== 'rest_api' )
 			return new WP_Error( 'pvc_rest_api_disabled', __( 'REST API method is disabled.', 'post-views-counter' ), [ 'status' => 404 ] );
 
 		// @todo: get current user id in direct api endpoint calls
@@ -249,33 +368,43 @@ class Post_Views_Counter_Counter {
 			return new WP_Error( 'pvc_post_invalid_id', __( 'Invalid post ID.', 'post-views-counter' ), [ 'status' => 404 ] );
 
 		// get countable post types
-		$post_types = Post_Views_Counter()->options['general']['post_types_count'];
+		$post_types = $pvc->options['general']['post_types_count'];
 
 		// whether to count this post type
 		if ( empty( $post_types ) || ! in_array( $post->post_type, $post_types, true ) )
 			return new WP_Error( 'pvc_post_type_excluded', __( 'Post type excluded.', 'post-views-counter' ), [ 'status' => 404 ] );
 
-		return $this->check_post( $post_id );
+		return [
+			'post_id'	=> $post_id,
+			'counted'	=> ! ( $this->check_post( $post_id ) === null )
+		];
 	}
 
 	/**
 	 * Initialize cookie session.
 	 *
+	 * @param array $cookie Use this cookie instead of $_COOKIE
 	 * @return void
 	 */
-	public function check_cookie() {
+	public function check_cookie( $cookie = [] ) {
 		// do not run in admin except for ajax requests
-		if ( is_admin() && ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) )
+		if ( is_admin() && ! wp_doing_ajax() )
 			return;
 
-		// assign cookie name
-		$cookie_name = 'pvc_visits' . ( is_multisite() ? '_' . get_current_blog_id() : '' );
+		if ( empty( $cookie ) ) {
+			// assign cookie name
+			$cookie_name = 'pvc_visits' . ( is_multisite() ? '_' . get_current_blog_id() : '' );
 
-		// is cookie set?
-		if ( isset( $_COOKIE[$cookie_name] ) && ! empty( $_COOKIE[$cookie_name] ) ) {
+			// is cookie set?
+			if ( isset( $_COOKIE[$cookie_name] ) && ! empty( $_COOKIE[$cookie_name] ) )
+				$cookie = $_COOKIE[$cookie_name];
+		}
+
+		// cookie data?
+		if ( $cookie ) {
 			$visited_posts = $expirations = [];
 
-			foreach ( $_COOKIE[$cookie_name] as $content ) {
+			foreach ( $cookie as $content ) {
 				// is cookie valid?
 				if ( preg_match( '/^(([0-9]+b[0-9]+a?)+)$/', $content ) === 1 ) {
 					// get single id with expiration
@@ -294,7 +423,7 @@ class Post_Views_Counter_Counter {
 			$this->cookie = [
 				'exists'		 => true,
 				'visited_posts'	 => $visited_posts,
-				'expiration'	 => max( $expirations )
+				'expiration'	 => empty( $expirations ) ? 0 : max( $expirations )
 			];
 		}
 	}
@@ -310,22 +439,44 @@ class Post_Views_Counter_Counter {
 	private function save_cookie( $id, $cookie = [], $expired = true ) {
 		$set_cookie = apply_filters( 'pvc_maybe_set_cookie', true );
 
-		// Cookie Notice compatibility
-		if ( function_exists( 'cn_cookies_accepted' ) && ! cn_cookies_accepted() )
-			$set_cookie = false;
-
 		if ( $set_cookie !== true )
 			return;
 
-		$expiration = $this->get_timestamp( Post_Views_Counter()->options['general']['time_between_counts']['type'], Post_Views_Counter()->options['general']['time_between_counts']['number'] );
+		// get main instance
+		$pvc = Post_Views_Counter();
+
+		// get expiration
+		$expiration = $this->get_timestamp( $pvc->options['general']['time_between_counts']['type'], $pvc->options['general']['time_between_counts']['number'] );
 
 		// assign cookie name
 		$cookie_name = 'pvc_visits' . ( is_multisite() ? '_' . get_current_blog_id() : '' );
 
+		// check whether php version is at least 7.3
+		$php_at_least_73 = version_compare( phpversion(), '7.3', '>=' );
+
 		// is this a new cookie?
 		if ( empty( $cookie ) ) {
-			// set cookie
-			setcookie( $cookie_name . '[0]', $expiration . 'b' . $id, $expiration, COOKIEPATH, COOKIE_DOMAIN, (isset( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' ? true : false ), true );
+			if ( $php_at_least_73 ) {
+				// set cookie
+				setcookie(
+					$cookie_name . '[0]',
+					$expiration . 'b' . $id,
+					[
+						'expires'	=> $expiration,
+						'path'		=> COOKIEPATH,
+						'domain'	=> COOKIE_DOMAIN,
+						'secure'	=> isset( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off',
+						'httponly'	=> true,
+						'samesite'	=> 'LAX'
+					]
+				);
+			} else {
+				// set cookie
+				setcookie( $cookie_name . '[0]', $expiration . 'b' . $id, $expiration, COOKIEPATH, COOKIE_DOMAIN, ( isset( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' ), true );
+			}
+
+			if ( $this->queue_mode )
+				$this->check_cookie( [ 0 => $expiration . 'b' . $id ] );
 		} else {
 			if ( $expired ) {
 				// add new id or change expiration date if id already exists
@@ -345,7 +496,7 @@ class Post_Views_Counter_Counter {
 			}
 
 			// set new last expiration date if needed
-			$cookie['expiration'] = max( $cookie['visited_posts'] );
+			$cookie['expiration'] = empty( $cookie['visited_posts'] ) ? 0 : max( $cookie['visited_posts'] );
 
 			$cookies = $imploded = [];
 
@@ -386,9 +537,28 @@ class Post_Views_Counter_Counter {
 			}
 
 			foreach ( $cookies as $key => $value ) {
-				// set cookie
-				setcookie( $cookie_name . '[' . $key . ']', $value, $cookie['expiration'], COOKIEPATH, COOKIE_DOMAIN, ( isset( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' ? true : false ), true );
+				if ( $php_at_least_73 ) {
+					// set cookie
+					setcookie(
+						$cookie_name . '[' . $key . ']',
+						$value,
+						[
+							'expires'	=> $cookie['expiration'],
+							'path'		=> COOKIEPATH,
+							'domain'	=> COOKIE_DOMAIN,
+							'secure'	=> isset( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off',
+							'httponly'	=> true,
+							'samesite'	=> 'LAX'
+						]
+					);
+				} else {
+					// set cookie
+					setcookie( $cookie_name . '[' . $key . ']', $value, $cookie['expiration'], COOKIEPATH, COOKIE_DOMAIN, ( isset( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' ), true );
+				}
 			}
+
+			if ( $this->queue_mode )
+				$this->check_cookie( $cookies );
 		}
 	}
 
@@ -400,10 +570,6 @@ class Post_Views_Counter_Counter {
 	 */
 	private function save_ip( $id ) {
 		$set_cookie = apply_filters( 'pvc_maybe_set_cookie', true );
-
-		// Cookie Notice compatibility
-		if ( function_exists( 'cn_cookies_accepted' ) && ! cn_cookies_accepted() )
-			$set_cookie = false;
 
 		if ( $set_cookie !== true )
 			return $id;
@@ -422,15 +588,18 @@ class Post_Views_Counter_Counter {
 
 		// visit exists in transient?
 		if ( isset( $ip_cache[$id][$user_ip] ) ) {
-			if ( $current_time > $ip_cache[$id][$user_ip] + $this->get_timestamp( Post_Views_Counter()->options['general']['time_between_counts']['type'], Post_Views_Counter()->options['general']['time_between_counts']['number'], false ) )
+			// get main instance
+			$pvc = Post_Views_Counter();
+
+			if ( $current_time > $ip_cache[$id][$user_ip] + $this->get_timestamp( $pvc->options['general']['time_between_counts']['type'], $pvc->options['general']['time_between_counts']['number'], false ) )
 				$ip_cache[$id][$user_ip] = $current_time;
 			else
 				return;
 		} else
 			$ip_cache[$id][$user_ip] = $current_time;
 
-		// keep it light, only 10 records per post and maximum 100 post records (=> max. 1000 ip entries)
-		// also, the data gets deleted after a week if there's no activity during this time...
+		// keep it light, only 10 records per post and maximum 100 post records (max. 1000 ip entries)
+		// also, the data gets deleted after a week if there's no activity during this time
 		if ( count( $ip_cache[$id] ) > 10 )
 			$ip_cache[$id] = array_slice( $ip_cache[$id], -10, 10, true );
 
@@ -485,7 +654,8 @@ class Post_Views_Counter_Counter {
 	/**
 	 * Remove post views from database when post is deleted.
 	 *
-	 * @global $wpdb
+	 * @global object $wpdb
+	 *
 	 * @param int $post_id
 	 * @return void
 	 */
@@ -501,16 +671,16 @@ class Post_Views_Counter_Counter {
 	 * @param string $type
 	 * @param int $number
 	 * @param bool $timestamp
-	 * @return string
+	 * @return int
 	 */
 	public function get_timestamp( $type, $number, $timestamp = true ) {
 		$converter = [
-			'minutes'	 => 60,
-			'hours'		 => 3600,
-			'days'		 => 86400,
-			'weeks'		 => 604800,
-			'months'	 => 2592000,
-			'years'		 => 946080000
+			'minutes'	=> 60,
+			'hours'		=> 3600,
+			'days'		=> 86400,
+			'weeks'		=> 604800,
+			'months'	=> 2592000,
+			'years'		=> 946080000
 		];
 
 		return (int) ( ( $timestamp ? current_time( 'timestamp', true ) : 0 ) + $number * $converter[$type] );
@@ -520,7 +690,7 @@ class Post_Views_Counter_Counter {
 	 * Check if object cache is in use.
 	 *
 	 * @param bool $using
-	 * @return bool
+	 * @return bool|null
 	 */
 	public function using_object_cache( $using = null ) {
 		$using = wp_using_ext_object_cache( $using );
@@ -624,7 +794,8 @@ class Post_Views_Counter_Counter {
 	/**
 	 * Insert or update views count.
 	 *
-	 * @global $wpdb
+	 * @global object $wpdb
+	 *
 	 * @param int $id
 	 * @param string $type
 	 * @param string $period
@@ -639,13 +810,7 @@ class Post_Views_Counter_Counter {
 		if ( ! $count )
 			$count = 1;
 
-		return $wpdb->query(
-		$wpdb->prepare( "
-				INSERT INTO " . $wpdb->prefix . "post_views (id, type, period, count)
-				VALUES (%d, %d, %s, %d)
-				ON DUPLICATE KEY UPDATE count = count + %d", $id, $type, $period, $count, $count
-		)
-		);
+		return $wpdb->query( $wpdb->prepare( "INSERT INTO " . $wpdb->prefix . "post_views (id, type, period, count) VALUES (%d, %d, %s, %d) ON DUPLICATE KEY UPDATE count = count + %d", $id, $type, $period, $count, $count ) );
 	}
 
 	/**
@@ -678,7 +843,8 @@ class Post_Views_Counter_Counter {
 	/**
 	 * Insert accumulated values to database.
 	 *
-	 * @global $wpdb
+	 * @global object $wpdb
+	 *
 	 * @return int|bool
 	 */
 	private function db_commit_insert() {
@@ -687,8 +853,8 @@ class Post_Views_Counter_Counter {
 
 		global $wpdb;
 
-		$result = $wpdb->query( "
-			INSERT INTO " . $wpdb->prefix . "post_views (id, type, period, count)
+		$result = $wpdb->query(
+			"INSERT INTO " . $wpdb->prefix . "post_views (id, type, period, count)
 			VALUES " . $this->db_insert_values . "
 			ON DUPLICATE KEY UPDATE count = count + VALUES(count)"
 		);
@@ -705,7 +871,7 @@ class Post_Views_Counter_Counter {
 	 * @param string $option
 	 * @return bool
 	 */
-	public function is_user_role_excluded( $user_id, $option ) {
+	public function is_user_role_excluded( $user_id, $option = [] ) {
 		// get user by ID
 		$user = get_user_by( 'id', $user_id );
 
@@ -782,19 +948,20 @@ class Post_Views_Counter_Counter {
 	/**
 	 * Encrypt user IP.
 	 *
-	 * @param int $ip
+	 * @param string $ip
 	 * @return string
 	 */
 	public function encrypt_ip( $ip ) {
-		$auth_key = defined( 'AUTH_KEY' ) ? AUTH_KEY : '';
-		$auth_iv = defined( 'NONCE_KEY' ) ? NONCE_KEY : '';
+		$auth_key = defined( 'AUTH_KEY' ) ? AUTH_KEY : false;
+		$auth_iv = defined( 'NONCE_KEY' ) ? NONCE_KEY : false;
 		$cipher = 'AES-256-CBC';
+		$php_71x = version_compare( phpversion(), '7.1.0', '>=' ) && version_compare( phpversion(), '7.2.0', '<' );
 
-		// open ssl encryption
-		if ( function_exists( 'openssl_encrypt' ) && in_array( $cipher, openssl_get_cipher_methods() ) ) {
-			$encrypted_ip = strtr( base64_encode( openssl_encrypt( $ip, $cipher, $auth_key, $options = 0, $auth_iv ) ) );
-			// mcrypt strong encryption
-		} elseif ( function_exists( 'mcrypt_encrypt' ) && function_exists( 'mcrypt_get_key_size' ) && function_exists( 'mcrypt_get_iv_size' ) && defined( 'MCRYPT_BLOWFISH' ) ) {
+		// openssl encryption
+		if ( $auth_key && $auth_iv && function_exists( 'openssl_encrypt' ) && in_array( $cipher, array_map( 'strtoupper', openssl_get_cipher_methods() ) ) )
+			$encrypted_ip = base64_encode( openssl_encrypt( $ip, $cipher, $auth_key, 0, mb_strimwidth( $auth_iv, 0, openssl_cipher_iv_length( $cipher ), '', 'UTF-8' ) ) );
+		// mcrypt encryption
+		elseif ( $auth_key && $auth_iv && ! $php_71x && function_exists( 'mcrypt_encrypt' ) && function_exists( 'mcrypt_get_key_size' ) && function_exists( 'mcrypt_get_iv_size' ) && defined( 'MCRYPT_BLOWFISH' ) ) {
 			// get max key size of the mcrypt mode
 			$max_key_size = mcrypt_get_key_size( MCRYPT_BLOWFISH, MCRYPT_MODE_CBC );
 			$max_iv_size = mcrypt_get_iv_size( MCRYPT_BLOWFISH, MCRYPT_MODE_CBC );
@@ -802,13 +969,13 @@ class Post_Views_Counter_Counter {
 			$encrypt_key = mb_strimwidth( $auth_key, 0, $max_key_size );
 			$encrypt_iv = mb_strimwidth( $auth_iv, 0, $max_iv_size );
 
-			$encrypted_ip = strtr( base64_encode( mcrypt_encrypt( MCRYPT_BLOWFISH, $encrypt_key, $ip, MCRYPT_MODE_CBC, $encrypt_iv ) ), '+/=', '-_,' );
-			// simple encryption
+			$encrypted_ip = base64_encode( mcrypt_encrypt( MCRYPT_BLOWFISH, $encrypt_key, $ip, MCRYPT_MODE_CBC, $encrypt_iv ) );
+		// simple encryption
 		} elseif ( function_exists( 'gzdeflate' ) )
 			$encrypted_ip = base64_encode( convert_uuencode( gzdeflate( $ip ) ) );
 		// no encryption
 		else
-			$encrypted_ip = strtr( base64_encode( convert_uuencode( $ip ) ), '+/=', '-_,' );
+			$encrypted_ip = base64_encode( convert_uuencode( $ip ) );
 
 		return $encrypted_ip;
 	}
@@ -816,19 +983,20 @@ class Post_Views_Counter_Counter {
 	/**
 	 * Decrypt user IP.
 	 *
-	 * @param int $encrypted_ip
+	 * @param string $encrypted_ip
 	 * @return string
 	 */
 	public function decrypt_ip( $encrypted_ip ) {
-		$auth_key = defined( 'AUTH_KEY' ) ? AUTH_KEY : '';
-		$auth_iv = defined( 'NONCE_KEY' ) ? NONCE_KEY : '';
+		$auth_key = defined( 'AUTH_KEY' ) ? AUTH_KEY : false;
+		$auth_iv = defined( 'NONCE_KEY' ) ? NONCE_KEY : false;
 		$cipher = 'AES-256-CBC';
+		$php_71x = version_compare( phpversion(), '7.1.0', '>=' ) && version_compare( phpversion(), '7.2.0', '<' );
 
-		// open ssl decryption
-		if ( function_exists( 'openssl_encrypt' ) && in_array( $cipher, openssl_get_cipher_methods() ) ) {
-			$ip = openssl_decrypt( $encrypted_ip, $cipher, $auth_key, $options = 0, $auth_iv );
-		// mcrypt strong encryption
-		} elseif ( function_exists( 'mcrypt_decrypt' ) && function_exists( 'mcrypt_get_key_size' ) && function_exists( 'mcrypt_get_iv_size' ) && defined( 'MCRYPT_BLOWFISH' ) ) {
+		// openssl decryption
+		if ( $auth_key && $auth_iv && function_exists( 'openssl_encrypt' ) && in_array( $cipher, array_map( 'strtoupper', openssl_get_cipher_methods() ) ) )
+			$ip = openssl_decrypt( base64_decode( $encrypted_ip ), $cipher, $auth_key, 0, mb_strimwidth( $auth_iv, 0, openssl_cipher_iv_length( $cipher ), '', 'UTF-8' ) );
+		// mcrypt decryption
+		elseif ( $auth_key && $auth_iv && ! $php_71x && function_exists( 'mcrypt_decrypt' ) && function_exists( 'mcrypt_get_key_size' ) && function_exists( 'mcrypt_get_iv_size' ) && defined( 'MCRYPT_BLOWFISH' ) ) {
 			// get max key size of the mcrypt mode
 			$max_key_size = mcrypt_get_key_size( MCRYPT_BLOWFISH, MCRYPT_MODE_CBC );
 			$max_iv_size = mcrypt_get_iv_size( MCRYPT_BLOWFISH, MCRYPT_MODE_CBC );
@@ -836,13 +1004,13 @@ class Post_Views_Counter_Counter {
 			$encrypt_key = mb_strimwidth( $auth_key, 0, $max_key_size );
 			$encrypt_iv = mb_strimwidth( $auth_iv, 0, $max_iv_size );
 
-			$ip = mcrypt_decrypt( MCRYPT_BLOWFISH, $encrypt_key, base64_decode( strtr( $encrypted_ip, '-_,', '+/=' ) ), MCRYPT_MODE_CBC, $encrypt_iv );
-			// simple encryption
+			$ip = rtrim( mcrypt_decrypt( MCRYPT_BLOWFISH, $encrypt_key, base64_decode( $encrypted_ip ), MCRYPT_MODE_CBC, $encrypt_iv ), "\0" );
+		// simple decryption
 		} elseif ( function_exists( 'gzinflate' ) )
 			$ip = gzinflate( convert_uudecode( base64_decode( $encrypted_ip ) ) );
-		// no encryption
+		// no decryption
 		else
-			$ip = convert_uudecode( base64_decode( strtr( $encrypted_ip, '-_,', '+/=' ) ) );
+			$ip = convert_uudecode( base64_decode( $encrypted_ip ) );
 
 		return $ip;
 	}
@@ -854,62 +1022,92 @@ class Post_Views_Counter_Counter {
 	 */
 	public function rest_api_init() {
 		// view post route
-		register_rest_route( 'post-views-counter', '/view-post/', [
-			'methods'				 => [ 'GET', 'POST' ],
-			'callback'				 => [ $this, 'check_post_rest_api' ],
-			'permission_callback'	 => [ $this, 'post_views_permissions_check' ],
-			'args'					 => [
-				'id' => [
-					'default'			 => 0,
-					'sanitize_callback'	 => 'absint'
+		register_rest_route(
+			'post-views-counter',
+			'/view-post/(?P<id>\d+)|/view-post/',
+			[
+				'methods'				 => [ 'GET', 'POST' ],
+				'callback'				 => [ $this, 'check_post_rest_api' ],
+				'permission_callback'	 => [ $this, 'post_view_permissions_check' ],
+				'args'					 => [
+					'id' => [
+						'default'			 => 0,
+						'sanitize_callback'	 => 'absint'
+					]
 				]
 			]
-		] );
+		);
 
 		// get views route
-		register_rest_route( 'post-views-counter', '/get-post-views/', [
-			'methods'				 => [ 'GET', 'POST' ],
-			'callback'				 => [ $this, 'get_post_views_rest_api' ],
-			'permission_callback'	 => [ $this, 'get_post_views_permissions_check' ],
-			'args'					 => [
-				'id' => [
-					'default'	 => 0,
-					'user_id'	 => get_current_user_id()
+		register_rest_route(
+			'post-views-counter',
+			'/get-post-views/(?P<id>(\d+,?)+)',
+			[
+				'methods'				 => [ 'GET', 'POST' ],
+				'callback'				 => [ $this, 'get_post_views_rest_api' ],
+				'permission_callback'	 => [ $this, 'get_post_views_permissions_check' ],
+				'args'					 => [
+					'id' => [
+						'default'			=> 0,
+						'sanitize_callback'	=> [ $this, 'validate_rest_api_data' ]
+					]
 				]
 			]
-		] );
+		);
 	}
 
 	/**
 	 * Get post views via REST API request.
 	 *
-	 * @param array $request
+	 * @param object $request
 	 * @return int
 	 */
 	public function get_post_views_rest_api( $request ) {
-		$post_id = is_array( $request['id'] ) ? array_map( 'absint', $request['id'] ) : absint( $request['id'] );
-
-		return pvc_get_post_views( $post_id );
+		return pvc_get_post_views( $request->get_param( 'id' ) );
 	}
 
 	/**
-	 * Check if a given request has access to get views.
+	 * Check if a given request has access to view post.
 	 *
-	 * @param WP_REST_Request $request Full data about the request.
-	 * @return WP_Error|bool
+	 * @param object $request
+	 * @return bool
 	 */
-	public function post_views_permissions_check( $request ) {
+	public function post_view_permissions_check( $request ) {
 		return (bool) apply_filters( 'pvc_rest_api_post_views_check', true, $request );
 	}
 
 	/**
 	 * Check if a given request has access to get views.
 	 *
-	 * @param WP_REST_Request $request Full data about the request.
-	 * @return WP_Error|bool
+	 * @param object $request
+	 * @return bool
 	 */
 	public function get_post_views_permissions_check( $request ) {
 		return (bool) apply_filters( 'pvc_rest_api_get_post_views_check', true, $request );
 	}
 
+	/**
+	 * Validate REST API incoming data.
+	 *
+	 * @param int|array $data
+	 * @return int|array
+	 */
+	public function validate_rest_api_data( $data ) {
+		// POST array?
+		if ( is_array( $data ) )
+			$data = array_unique( array_filter( array_map( 'absint', $data ) ), SORT_NUMERIC );
+		// multiple comma-separated values?
+		elseif ( strpos( $data, ',' ) !== false ) {
+			$data = explode( ',', $data );
+
+			if ( is_array( $data ) && ! empty( $data ) )
+				$data = array_unique( array_filter( array_map( 'absint', $data ) ), SORT_NUMERIC );
+			else
+				$data = [];
+		// single value?
+		} else
+			$data = absint( $data );
+
+		return $data;
+	}
 }
