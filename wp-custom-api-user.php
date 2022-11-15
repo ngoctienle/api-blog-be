@@ -1,7 +1,7 @@
 <?php
     add_action('rest_api_init', function(){
         register_rest_route('wp/v2', 'users/register', array(
-            'method' =>  WP_REST_Server::CREATABLE,
+            'methods' =>  WP_REST_Server::CREATABLE,
             'callback' => 'handle_route_users_register',
             'args'  => array(
             'username' => array(
