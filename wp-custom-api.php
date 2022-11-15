@@ -1,4 +1,5 @@
 <?php
+  require_once(ABSPATH . 'wp-custom-api-user.php');
 
   add_action( 'rest_api_init', function () {
     // Get Image Thumbnail by featured_media id
@@ -44,7 +45,6 @@
 
     if ($post_id) {
       $url = get_the_post_thumbnail_url($post_id);
-      // $arrUrl = wp_get_attachment_image_src($media_id);
       return $url;
     }
 
