@@ -6,6 +6,8 @@
  * @package WordPress
  */
 
+define('WP_HOME','https://api-bravebanks.herokuapp.com/'); 
+define('WP_SITEURL','https://api-bravebanks.herokuapp.com/');
 // ** Setting MySQL ** //
 /** Database Name MySQL */
 define('DB_NAME', 'yv722c6ncxxlk6kx');
