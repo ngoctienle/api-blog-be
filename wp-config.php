@@ -9,16 +9,17 @@
 // ** Setting MySQL ** //
 /** Database Name MySQL */
 
-define('DB_NAME', 'palls1flve0wmt2q');
+define('DB_NAME', 'ofvnfthv820h5e1i');
 
 /** Database Username */
-define('DB_USER', 'pnzs9v9jrx8jae5d');
+define('DB_USER', 'uccs25hyfb1du7tt');
 
 /** Database Password */
-define('DB_PASSWORD', 'qlhltjhd6tp3owdw');
+define('DB_PASSWORD', 'pcosawge6vlw8gx3');
 
 /** Database Hostname */
 define('DB_HOST', 'o2olb7w3xv09alub.cbetxkdyhwsb.us-east-1.rds.amazonaws.com');
+define('DB_PORT', '3306');
 	
 /** Database Charset */
 define('DB_CHARSET', 'utf8');
