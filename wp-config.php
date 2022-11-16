@@ -11,12 +11,12 @@ define('WP_SITEURL','https://api-bravebanks.herokuapp.com/');
 // ** Setting MySQL ** //
 /** Database Name MySQL */
 
-//** mysql://bc8daa0f9b1a1c:45e97ff0@us-cdbr-east-06.cleardb.net/heroku_a6bb90122516d86?reconnect=true
+//** mysql://b65f95d5393d00:f84b35b8@us-cdbr-east-06.cleardb.net/heroku_c3d77e4b6d364da?reconnect=true
 if(isset($_ENV[`CLEARDB_DATABASE_URL`])) {
     $db = parse_url($_ENV[`CLEARDB_DATABASE_URL`]);
     define(`DB_NAME`, trim($db[`path`],`/`));
-    define(`DB_USER`, $db[`bc8daa0f9b1a1c`]);
-    define(`DB_PASSWORD`, $db[`45e97ff0`]);
+    define(`DB_USER`, $db[`b65f95d5393d00`]);
+    define(`DB_PASSWORD`, $db[`f84b35b8`]);
     define(`DB_HOST`, $db[`us-cdbr-east-06.cleardb.net`]);
     define(`DB_CHARSET`, `utf8`);
     define(`DB_COLLATE`, ``);
