@@ -8,16 +8,16 @@
 
 // ** Setting MySQL ** //
 /** Database Name MySQL */
-define('DB_NAME', 'wp_api');
+define('DB_NAME', 'yv722c6ncxxlk6kx');
 
 /** Database Username */
-define('DB_USER', 'root');
+define('DB_USER', 'nzxe49wdoc8akimu');
 
 /** Database Password */
-define('DB_PASSWORD', '');
+define('DB_PASSWORD', 'vf6mjked5qked9hm');
 
 /** Database Hostname */
-define('DB_HOST', 'localhost');
+define('DB_HOST', 'https://api-bravebanks.herokuapp.com/');
 	
 /** Database Charset */
 define('DB_CHARSET', 'utf8');
