@@ -11,14 +11,14 @@ define('WP_SITEURL','https://api-bravebanks.herokuapp.com/');
 // ** Setting MySQL ** //
 /** Database Name MySQL */
 
-//** mysql://b65f95d5393d00:f84b35b8@us-cdbr-east-06.cleardb.net/heroku_c3d77e4b6d364da?reconnect=true
-define('DB_NAME', 'heroku_c3d77e4b6d364da');
+//** mysql://b5ce1af5ec46a5:13703780@us-cdbr-east-06.cleardb.net/heroku_d0b689d30e174a1?reconnect=true
+define('DB_NAME', 'heroku_d0b689d30e174a1');
 
 /** Database Username */
-define('DB_USER', 'b65f95d5393d00');
+define('DB_USER', 'b5ce1af5ec46a5');
 
 /** Database Password */
-define('DB_PASSWORD', 'f84b35b8');
+define('DB_PASSWORD', '13703780');
 
 /** Database Hostname */
 define('DB_HOST', 'us-cdbr-east-06.cleardb.net');
