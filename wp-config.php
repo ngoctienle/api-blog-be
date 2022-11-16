@@ -17,7 +17,7 @@ define('DB_USER', 'nzxe49wdoc8akimu');
 define('DB_PASSWORD', 'vf6mjked5qked9hm');
 
 /** Database Hostname */
-define('DB_HOST', 'https://api-bravebanks.herokuapp.com/');
+define('DB_HOST', 'http://x71wqc4m22j8e3ql.cbetxkdyhwsb.us-east-1.rds.amazonaws.com');
 	
 /** Database Charset */
 define('DB_CHARSET', 'utf8');
