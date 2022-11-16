@@ -9,13 +9,13 @@
 // ** Setting MySQL ** //
 /** Database Name MySQL */
 
-define('DB_NAME', 'vnmzdj5z6abu1nu5');
+define('DB_NAME', 'po8s05bcr9bkf7g1');
 
 /** Database Username */
-define('DB_USER', 'c4c9l4ib2rsg43z0');
+define('DB_USER', 'vb00n282diz96p7p');
 
 /** Database Password */
-define('DB_PASSWORD', 'qycrjch75atqt93v');
+define('DB_PASSWORD', 'l4yn3wcryyoc9alu');
 
 /** Database Hostname */
 define('DB_HOST', 'h1use0ulyws4lqr1.cbetxkdyhwsb.us-east-1.rds.amazonaws.com');
