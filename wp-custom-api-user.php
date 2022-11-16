@@ -90,9 +90,9 @@
     }
 
     function handle_route_users_register($request){
-        $user_can_register = (boolean) get_option('user_can_register');
+        $users_can_register = (boolean) get_option('users_can_register');
 
-        if($user_can_register === false){
+        if($users_can_register === false){
             return new WP_Error(
                 'rest_user_cannot_register',
                 __('User cannot register'),
